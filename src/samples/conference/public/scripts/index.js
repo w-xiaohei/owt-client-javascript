@@ -143,6 +143,7 @@ const runSocketIOSample = function() {
             conference.join(token).then(resp => {
                 myId = resp.self.id;
                 myRoom = resp.id;
+                $('#roomId').val(myRoom);
                 if(mediaUrl){
                      startStreamingIn(myRoom, mediaUrl);
                 }
@@ -176,6 +177,7 @@ const runSocketIOSample = function() {
                         $('.local video').get(0).srcObject = stream;
                         conference.publish(localStream, publishOption).then(publication => {
                             publicationGlobal = publication;
+                            $('#streamId').val(publication.id);
                             mixStream(myRoom, publication.id, 'common')
                             publication.addEventListener('error', (err) => {
                                 console.log('Publication error: ' + err.error.message);
