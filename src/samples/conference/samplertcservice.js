@@ -530,6 +530,911 @@ app.post('/tokens', function(req, res) {
     res.status(401).send(err);
   });
 });
+/*******************add start************************************/
+function respSuccess(resp, data) {
+  const json = {
+    state : true,
+    code  : 200,
+    message: "Success",
+    data: data
+  };
+  resp.send(json);
+}
+function respError(resp, errCode, errMessage) {
+  const json = {
+    state : false,
+    code  : errCode,
+    message: errMessage
+  };
+  resp.send(json);
+}
+/**
+*先查看房间有没有存在，如果已经存在则调用修改房间信息接口
+**/
+app.post('/createMcuRoom/',function(req,res){
+  'use strict';
+  const room = req.body.room;
+  const members = req.body.members;
+  icsREST.API.getRooms(pageOption,function(rooms){
+    console.log(rooms.length+' rooms in this service');
+    let is_room_exists = false;
+    let room_id = 0 ;
+    for(let i=0;i<rooms.length;i++){
+      if(room == rooms[i].name){
+        room_id = rooms[i]._id;
+        is_room_exists = true;
+        break;
+      }
+    }
+
+    const options = {};
+    if(is_room_exists){
+      console.log("going to update room :"+roomid);
+      icsREST.API.updateRoom(room_id,options,function(room){
+        respSuccess(res,room);
+      },function(code,err){
+        respError(res,code,err);
+      });
+    }else{
+      console.log("going to create room:"+room);
+      icsREST.API.createRoom(room,options,function(room){
+        respSuccess(res,room);
+      },function(code,err){
+        respError(res,code,err);
+      });
+    }
+    console.log(options);
+  })
+});
+
+app.get('/mcuRoom/:room',function(req,res){
+  'use strict';
+  const room = req.params.room;
+  icsREST.API.getRooms(pageOption,function(rooms) {
+    console.log(rooms.length + ' rooms in this service.');
+    let is_room_exists = false;
+    let room_id = 0;
+    for (let i = 0; i < rooms.length; i++) {
+      if (room == rooms[i].name) {
+        is_room_exists = true;
+        room_id = rooms[i]._id;
+        break;
+      }
+    }
+    if (!is_room_exists) {
+      respError(res, 400, 'Room does not exist！');
+      return;
+    }
+    respSuccess(res, {
+      "_id": room_id
+    });
+  },function(code,err){
+    respError(res,code,err);
+  });
+});
+
+app.post('/joinMcuRoom/',function(req,res){
+  'use strict';
+  const room = req.body.room;
+  icsREST.API.getRooms(pageOption,function(rooms){
+    console.log(rooms.length+' rooms in this service');
+    let is_room_exists = false;
+    let room_id = 0 ;
+    for(let i=0;i<rooms.length;i++){
+      if(room == rooms[i].name){
+        room_id = rooms[i]._id;
+        is_room_exists = true;
+        break;
+      }
+    }
+    const options = {};
+    if(is_room_exists){
+      respSuccess(res,{_id:room_id});
+    }else{
+      console.log("going to create room:"+room);
+      icsREST.API.createRoom(room,options,function(room){
+        respSuccess(res,{_id:room._id});
+      },function(code,err){
+        respError(res,code,err);
+      });
+    }
+    console.log(options);
+  });
+});
+
+app.post('/mcuRoom/',function(req,res){
+  'use strict';
+  const room = req.body.room;
+  icsREST.API.getRooms(pageOption,function(rooms){
+    console.log(rooms.length+' rooms in this service.');
+    let is_room_exists = false;
+    let room_id = 0 ;
+    for(let i=0;i<rooms.length;i++){
+      if(room == rooms[i].name){
+        is_room_exists = true;
+        room_id = rooms[i]._id;
+        break;
+      }
+    }
+    if(!is_room_exists){
+      respError(res,400,'Room does not exist!');
+      return ;
+    }
+    respSuccess(res,{
+      "_id":room_id
+    });
+  },function(code,err){
+    respError(res,code,err);
+  });
+});
+
+app.post('/updateMcuLayout/',function(req,res){
+  'use strict';
+  const room_id = req.body.roomId;
+  const members = req.body.members;
+  const layout_region = calculateLayout(members);
+  console.log("going to update room: "+room_id);
+  const options = {
+    views:{
+      video:{
+        layout:{
+          fitPolicy:"crop",
+          templates:{
+            base:"void",
+            custom:layout_region.layout
+          }
+        }
+      }
+    }
+  };
+
+  icsREST.API.updateRoom(room_id,options,function(room){
+    console.log(room);
+    icsREST.API.getStreams(room_id,function(streams){
+      const stream_array = [];
+      let mix_stream_id = '';
+      for(let index in streams){
+        const stream = streams[index];
+        if(stream.typs == 'forward'){
+          stream_array.push(stream);
+        }else if(stream.type=='mixed'){
+          mix_stream_id = stream.id
+        }
+      }
+      console.log("Forward Streams");
+      console.log(stream_array);
+      const values = [];
+      for(let index in stream_array){
+        const stream = stream_array[index];
+        values.push(
+            {
+              stream:stream.id,
+              region:layout_region.regions[index]
+            }
+        );
+      }
+
+      const layout_update_items=[
+        {
+          op:'replace',
+          path:'/info/layout',
+          value:values
+        }
+      ];
+      icsREST.API.updateStream(room_id,mix_stream_id,layout_update_items,function(stream){
+        console.log("update stream!");
+        console.log(stream);
+      },function(err){
+        console.log("update err:"+err);
+      });
+      respSuccess(res,"");
+    },function(code,err){
+      respError(res,code,err);
+    });
+  },function(code,err){
+    respError(res,code,err);
+  });
+});
+
+function calculateLayout(members) {
+  let regions = [];
+  let layout = {};
+  let region_count = 0;
+  if (members == 1) {
+    regions[0] = {
+      "id": "1",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "0",
+        "width": "1",
+        "height": "1"
+      }
+    }
+    layout = [
+      {
+        "region": [regions[0]]
+      }
+    ];
+    region_count = 1;
+  } else if (members == 2) {
+    regions[0] = {
+      "id": "1",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "0",
+        "width": "1/2",
+        "height": "1"
+      }
+    };
+    regions[1] = {
+      "id": "2",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/2",
+        "top": "0",
+        "width": "1/2",
+        "height": "1"
+      }
+    };
+
+    layout = [
+      {
+        "region": [regions[0],regions[1]]
+      }
+    ];
+    region_count = 2;
+  } else if (members == 21) {
+    regions[0] = {
+      "id": "1",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "0",
+        "width": "1",
+        "height": "1"
+      }
+    };
+    regions[1] = {
+      "id": "2",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "2/3",
+        "width": "1/3",
+        "height": "1/3"
+      }
+    };
+  } else if (members == 22) {
+    regions[0] = {
+      "id": "1",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "0",
+        "width": "1/2",
+        "height": "1"
+      }
+    };
+    regions[1] = {
+      "id": "2",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/2",
+        "top": "0",
+        "width": "1/2",
+        "height": "1"
+      }
+    };
+
+    layout = [
+      {
+        "region": [regions[0],regions[1]]
+      }
+    ];
+    region_count = 2;
+  } else if (members == 3) {
+    regions[0] = {
+      "id": "1",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "0",
+        "width": "1/2",
+        "height": "2/3"
+      }
+    };
+    regions[1] = {
+      "id": "2",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/2",
+        "top": "0",
+        "width": "1/2",
+        "height": "2/3"
+      }
+    };
+    regions[2] = {
+      "id": "3",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/4",
+        "top": "2/3",
+        "width": "1/2",
+        "height": "1/3"
+      }
+    };
+
+    layout = [
+      {
+        "region": [regions[0], regions[1], regions[2]]
+      }
+    ];
+    region_count = 3;
+  } else if (members == 4) {
+    regions[0] = {
+      "id": "1",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "0",
+        "width": "1/2",
+        "height": "1/2"
+      }
+    };
+    regions[1] = {
+      "id": "2",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/2",
+        "top": "0",
+        "width": "1/2",
+        "height": "1/2"
+      }
+    };
+    regions[2] = {
+      "id": "3",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "1/2",
+        "width": "1/2",
+        "height": "1/2"
+      }
+    };
+    regions[3] = {
+      "id": "4",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/2",
+        "top": "1/2",
+        "width": "1/2",
+        "height": "1/2"
+      }
+    };
+    layout = [
+      {
+        "region": [regions[0], regions[1], regions[2], regions[3]]
+      }
+    ];
+    region_count = 4;
+  } else if (members == 5) {
+    regions[0] = {
+      "id": "1",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "0",
+        "width": "1/3",
+        "height": "1/2"
+      }
+    };
+    regions[1] = {
+      "id": "2",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/3",
+        "top": "0",
+        "width": "1/3",
+        "height": "1/2"
+      }
+    };
+    regions[2] = {
+      "id": "3",
+      "shape": "rectangle",
+      "area": {
+        "left": "2/3",
+        "top": "0",
+        "width": "1/3",
+        "height": "1/2"
+      }
+    };
+    regions[3] = {
+      "id": "4",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/6",
+        "top": "1/2",
+        "width": "1/3",
+        "height": "1/2"
+      }
+    };
+    regions[4] = {
+      "id": "5",
+      "shape": "rectangle",
+      "area": {
+        "left": "3/6",
+        "top": "1/2",
+        "width": "1/3",
+        "height": "1/2"
+      }
+    };
+
+    layout = [
+      {
+        "region": [regions[0], regions[1], regions[2], regions[3], regions[4]]
+      }
+    ];
+    region_count = 5;
+  } else if (members == 6) {
+    regions[0] = {
+      "id": "1",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "0",
+        "width": "2/3",
+        "height": "2/3"
+      }
+    };
+    regions[1] = {
+      "id": "2",
+      "shape": "rectangle",
+      "area": {
+        "left": "2/3",
+        "top": "0",
+        "width": "1/3",
+        "height": "1/3"
+      }
+    };
+    regions[2] = {
+      "id": "3",
+      "shape": "rectangle",
+      "area": {
+        "left": "2/3",
+        "top": "1/3",
+        "width": "1/3",
+        "height": "1/3"
+      }
+    };
+    regions[3] = {
+      "id": "4",
+      "shape": "rectangle",
+      "area": {
+        "left": "2/3",
+        "top": "2/3",
+        "width": "1/3",
+        "height": "1/3"
+      }
+    };
+    regions[4] = {
+      "id": "5",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/3",
+        "top": "2/3",
+        "width": "1/3",
+        "height": "1/3"
+      }
+    };
+    regions[5] = {
+      "id": "6",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "2/3",
+        "width": "1/3",
+        "height": "1/3"
+      }
+    };
+    layout = [
+      {
+        "region": [regions[0], regions[1], regions[2], regions[3], regions[4], regions[5]]
+      }
+    ];
+    region_count = 6;
+  } else if (members == 9) {
+    regions[0] = {
+      "id": "1",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "0",
+        "width": "1/3",
+        "height": "1/3"
+      }
+    };
+    regions[1] = {
+      "id": "2",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/3",
+        "top": "0",
+        "width": "1/3",
+        "height": "1/3"
+      }
+    };
+    regions[2] = {
+      "id": "3",
+      "shape": "rectangle",
+      "area": {
+        "left": "2/3",
+        "top": "0",
+        "width": "1/3",
+        "height": "1/3"
+      }
+    };
+    regions[3] = {
+      "id": "4",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "1/3",
+        "width": "1/3",
+        "height": "1/3"
+      }
+    };
+    regions[4] = {
+      "id": "5",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/3",
+        "top": "1/3",
+        "width": "1/3",
+        "height": "1/3"
+      }
+    };
+    regions[5] = {
+      "id": "6",
+      "shape": "rectangle",
+      "area": {
+        "left": "2/3",
+        "top": "1/3",
+        "width": "1/3",
+        "height": "1/3"
+      }
+    };
+    regions[6] = {
+      "id": "7",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "2/3",
+        "width": "1/3",
+        "height": "1/3"
+      }
+    };
+    regions[7] = {
+      "id": "6",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/3",
+        "top": "2/3",
+        "width": "1/3",
+        "height": "1/3"
+      }
+    };
+    regions[8] = {
+      "id": "6",
+      "shape": "rectangle",
+      "area": {
+        "left": "2/3",
+        "top": "2/3",
+        "width": "1/3",
+        "height": "1/3"
+      }
+    };
+    layout = [
+      {
+        "region": [regions[0], regions[1], regions[2], regions[3], regions[4], regions[5], regions[6], regions[7], regions[8]]
+      }
+    ];
+    region_count = 9;
+  } else if (members == 11) {
+    regions[0] = {
+      "id": "1",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/4",
+        "top": "1/3",
+        "width": "1/2",
+        "height": "1/3"
+      }
+    };
+    regions[1] = {
+      "id": "2",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "0",
+        "width": "1/4",
+        "height": "1/3"
+      }
+    };
+    regions[2] = {
+      "id": "3",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/4",
+        "top": "0",
+        "width": "1/4",
+        "height": "1/3"
+      }
+    };
+    regions[3] = {
+      "id": "4",
+      "shape": "rectangle",
+      "area": {
+        "left": "2/4",
+        "top": "0",
+        "width": "1/4",
+        "height": "1/3"
+      }
+    };
+    regions[4] = {
+      "id": "5",
+      "shape": "rectangle",
+      "area": {
+        "left": "3/4",
+        "top": "0",
+        "width": "1/4",
+        "height": "1/3"
+      }
+    };
+    regions[5] = {
+      "id": "6",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "1/3",
+        "width": "1/4",
+        "height": "1/3"
+      }
+    };
+    regions[6] = {
+      "id": "7",
+      "shape": "rectangle",
+      "area": {
+        "left": "3/4",
+        "top": "1/3",
+        "width": "1/4",
+        "height": "1/3"
+      }
+    };
+    regions[7] = {
+      "id": "8",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "2/3",
+        "width": "1/4",
+        "height": "1/3"
+      }
+    };
+    regions[8] = {
+      "id": "9",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/4",
+        "top": "2/3",
+        "width": "1/4",
+        "height": "1/3"
+      }
+    };
+    regions[9] = {
+      "id": "10",
+      "shape": "rectangle",
+      "area": {
+        "left": "2/4",
+        "top": "2/3",
+        "width": "1/4",
+        "height": "1/3"
+      }
+    };
+    regions[10] = {
+      "id": "11",
+      "shape": "rectangle",
+      "area": {
+        "left": "3/4",
+        "top": "2/3",
+        "width": "1/4",
+        "height": "1/3"
+      }
+    };
+    layout = [
+      {
+        "region": [regions[0], regions[1], regions[2], regions[3], regions[4], regions[5],
+          regions[6], regions[7], regions[8], regions[9], regions[10]]
+      }
+    ];
+    region_count = 11;
+  } else if (members == 16) {
+    regions[0] = {
+      "id": "1",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "0",
+        "width": "1/4",
+        "height": "1/4"
+      }
+    };
+    regions[1] = {
+      "id": "2",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/4",
+        "top": "0",
+        "width": "1/4",
+        "height": "1/4"
+      }
+    };
+    regions[2] = {
+      "id": "3",
+      "shape": "rectangle",
+      "area": {
+        "left": "2/4",
+        "top": "0",
+        "width": "1/4",
+        "height": "1/4"
+      }
+    };
+    regions[3] = {
+      "id": "4",
+      "shape": "rectangle",
+      "area": {
+        "left": "3/4",
+        "top": "0",
+        "width": "1/4",
+        "height": "1/4"
+      }
+    };
+    regions[4] = {
+      "id": "5",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "1/4",
+        "width": "1/4",
+        "height": "1/4"
+      }
+    };
+    regions[5] = {
+      "id": "6",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/4",
+        "top": "1/4",
+        "width": "1/4",
+        "height": "1/4"
+      }
+    };
+    regions[6] = {
+      "id": "7",
+      "shape": "rectangle",
+      "area": {
+        "left": "2/4",
+        "top": "1/4",
+        "width": "1/4",
+        "height": "1/4"
+      }
+    };
+    regions[7] = {
+      "id": "8",
+      "shape": "rectangle",
+      "area": {
+        "left": "3/4",
+        "top": "1/4",
+        "width": "1/4",
+        "height": "1/4"
+      }
+    };
+    regions[8] = {
+      "id": "9",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "2/4",
+        "width": "1/4",
+        "height": "1/4"
+      }
+    };
+    regions[9] = {
+      "id": "10",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/4",
+        "top": "2/4",
+        "width": "1/4",
+        "height": "1/4"
+      }
+    };
+    regions[10] = {
+      "id": "11",
+      "shape": "rectangle",
+      "area": {
+        "left": "2/4",
+        "top": "2/4",
+        "width": "1/4",
+        "height": "1/4"
+      }
+    };
+    regions[11] = {
+      "id": "12",
+      "shape": "rectangle",
+      "area": {
+        "left": "3/4",
+        "top": "2/4",
+        "width": "1/4",
+        "height": "1/4"
+      }
+    };
+    regions[12] = {
+      "id": "13",
+      "shape": "rectangle",
+      "area": {
+        "left": "0",
+        "top": "3/4",
+        "width": "1/4",
+        "height": "1/4"
+      }
+    };
+    regions[13] = {
+      "id": "14",
+      "shape": "rectangle",
+      "area": {
+        "left": "1/4",
+        "top": "3/4",
+        "width": "1/4",
+        "height": "1/4"
+      }
+    };
+    regions[14] = {
+      "id": "15",
+      "shape": "rectangle",
+      "area": {
+        "left": "2/4",
+        "top": "3/4",
+        "width": "1/4",
+        "height": "1/4"
+      }
+    };
+    regions[15] = {
+      "id": "16",
+      "shape": "rectangle",
+      "area": {
+        "left": "3/4",
+        "top": "3/4",
+        "width": "1/4",
+        "height": "1/4"
+      }
+    };
+    layout = [
+      {
+        "region": [regions[0], regions[1], regions[2], regions[3], regions[4], regions[5],
+          regions[6], regions[7], regions[8], regions[9], regions[10], regions[11], regions[12], regions[13], regions[14], regions[15]]
+      }
+    ];
+    region_count = 16;
+  }
+  return {
+    regions: regions,
+    region_count: region_count,
+    layout: layout
+  };
+}
+/*******************add end************************************/
 ////////////////////////////////////////////////////////////////////////////////////////////
 // New RESTful interface end
 ////////////////////////////////////////////////////////////////////////////////////////////
