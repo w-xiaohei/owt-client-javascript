@@ -78,3 +78,57 @@ var createToken = function (room, user, role, callback, host) {
     };
     send('POST', '/tokens/', body, callback, host);
 };
+/********add start*************/
+var startStreamingOut = function(host){
+    var rtmpUrl = $('#rtmp').val();
+    var streamId = $('#streamId').val();
+    var roomId = $('#roomId').val();
+    var options = {
+        url:rtmpUrl,
+        media:{
+            "audio":{
+                "from":streamId
+            },
+            "video":{
+                "from":streamId
+            }
+        }
+    };
+    send('post','/rooms'+roomId+'/streaming-outs',options,result=>{
+        if(result){
+            result = $.parseJSON(result);
+            $('#rtmp_btn').unbind();
+            $('#stream_out_id').val(result.id);
+            bindStopStreamEvent();
+        }
+    },host);
+};
+
+var stopStreamingOut=function(host){
+    var roomId = $('#roomId').val();
+    var streamOutId = $('#stream_out_id').val();
+    send('DELETE','/rooms/'+roomId+'/streaming-outs/'+streamOutId,null,onResponse,host);
+};
+
+function bindStartStreamEvent(){
+    $('#rtmp_btn').unbind();
+    $('$rtmp_btn').on('click',function () {
+        alert('start publish!');
+        startStreamingOut();
+    })
+}
+
+function bindStopStreamEvent(){
+    $('#rtmp_btn').text("stop rtmp publish");
+    $('rtmp_btn').on('click',function () {
+        alert('stop publish!');
+        stopStreamingOut();
+        bindStartStreamEvent();
+    })
+}
+
+$(document).ready(function () {
+    bindStartStreamEvent();
+});
+
+/*********add end*****************/
