@@ -94,7 +94,7 @@ var startStreamingOut = function(host){
             }
         }
     };
-    send('post','/rooms'+roomId+'/streaming-outs',options,result=>{
+    send('post','/rooms/'+roomId+'/streaming-outs',options,result=>{
         if(result){
             result = $.parseJSON(result);
             $('#rtmp_btn').unbind();
@@ -112,7 +112,7 @@ var stopStreamingOut=function(host){
 
 function bindStartStreamEvent(){
     $('#rtmp_btn').unbind();
-    $('$rtmp_btn').on('click',function () {
+    $('#rtmp_btn').on('click',function () {
         alert('start publish!');
         startStreamingOut();
     })
@@ -120,7 +120,7 @@ function bindStartStreamEvent(){
 
 function bindStopStreamEvent(){
     $('#rtmp_btn').text("stop rtmp publish");
-    $('rtmp_btn').on('click',function () {
+    $('#rtmp_btn').on('click',function () {
         alert('stop publish!');
         stopStreamingOut();
         bindStartStreamEvent();

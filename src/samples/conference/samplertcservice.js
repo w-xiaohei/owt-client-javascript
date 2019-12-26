@@ -393,7 +393,7 @@ app.post('/rooms/:room/streaming-outs', function(req, res) {
     url = req.body.url,
     parameters = req.body.parameters,
     media = req.body.media;
-
+  console.log("room:"+room +" protocol:"+protocol+ " url:"+url + " parameters:"+parameters+" media:"+media);
   icsREST.API.startStreamingOut(room, protocol, url, parameters, media, function(info) {
     res.send(info);
   }, function(err) {
